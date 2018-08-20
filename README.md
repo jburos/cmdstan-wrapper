@@ -45,11 +45,12 @@ Fitting a stan model proceeds in a few steps (similar to what one would do when 
 
 The scripts in this repo largely replicate the functionality of Rstan -- I have found, however, several benefits to this approach:
 
-1. I can checkpoint the version of CmdStan I want to reference, by pointing the git submodule included here to a particular commit. 
-2. I have somewhat better job control due to the simplicity of the code; I find the executing chains are more stable in this version & killing a job correctly kills all child processes
-3. This code will maintain an archive of previous stan fits. The stan input data, chains, summary, and model fits are stored together for more reproducible execution (there are better ways to do this; this is a version that works for me).
-4. I can easily call CmdStan directly or share the files with another researcher who can use their preferred stan interface.
-5. I personally like that the same call to `fit_stan_model` will not re-execute runs that have already completed. I am a big fan of caching.
+1. Checkpoint the version of CmdStan 
+2. Better job control due to the simplicity of the code
+    - killing parent process kills all child processes
+    - more stable for long-running chains (not sure why this is)
+3. Maintains an archive of model fits that is stan-interface agnostic. In academia, this is useful.
+4. Built-in caching of model fits. Same fit with same seed will not re-sample.
 
 The code to execute via CmdStan is in the [stan_helpers.functions.R](stan_helpers.functions.R) file.
 
