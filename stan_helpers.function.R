@@ -50,7 +50,7 @@ write_init_file <- function(data, file) {
     writeLines(text = lines, con = file)
 }
 
-fit_stan_model <- function(stan_data, stan_model=stan_model, label='default',
+fit_stan_model <- function(data, file, label='default',
                            chains = 4,
                            iter = 1000,
                            init = 1,
@@ -64,28 +64,28 @@ fit_stan_model <- function(stan_data, stan_model=stan_model, label='default',
                            max_treedepth = 15,
                            control = list(adapt = list(delta = adapt_delta),
                                           list(algorithm = 'hmc', engine = 'nuts', max_depth = max_treedepth),
-                                          list(num_samples = samples, num_warmup = warmup, init = init)),
+                                          list(num_samples = samples, num_warmup = warmup, init = init))
                            ) {
     set.seed(seed)
     seeds <- ceiling(runif(chains, 0, 10^6))
 
     # filenames for generated outputs
-    # (hash stan_data without attributes)
-    naked_data <- stan_data
+    # (hash data without attributes)
+    naked_data <- data
     attributes(naked_data) <- attributes(naked_data)[1] # only names attribute
     datahash <- digest::digest(naked_data, algo = 'md5', serialize = T)
     str(naked_data)
     print(glue::glue('datahash is {datahash}'))
     config <- stringr::str_c(adapt_delta, max_treedepth, init, samples, warmup, seed, sep = '-')
-    stan_data_file <- paste(c(stan_model, 'data', label, datahash, 'Rds'), collapse='.')
-    stan_metadata_file <- paste(c(stan_model, 'metadata', label, datahash, 'Rds'), collapse = '.')
-    stan_results_file <- paste(c(stan_model, 'chain{i}', label, datahash, config, '{chain_seed}', 'txt'), collapse='.')
-    stan_summary_file <- paste(c(stan_model, 'summary', label, datahash, config, 'txt'), collapse='.')
-    stan_fit_file <-  paste(c(stan_model, 'fit', label, datahash, config, 'Rds'), collapse='.')
-    stan_init_file <- paste(c(stan_model, 'chain{i}-init', label, datahash, config, 'Rds'), collapse='.')
+    stan_data_file <- paste(c(file, 'data', label, datahash, 'Rds'), collapse='.')
+    stan_metadata_file <- paste(c(file, 'metadata', label, datahash, 'Rds'), collapse = '.')
+    stan_results_file <- paste(c(file, 'chain{i}', label, datahash, config, '{chain_seed}', 'txt'), collapse='.')
+    stan_summary_file <- paste(c(file, 'summary', label, datahash, config, 'txt'), collapse='.')
+    stan_fit_file <-  paste(c(file, 'fit', label, datahash, config, 'Rds'), collapse='.')
+    stan_init_file <- paste(c(file, 'chain{i}-init', label, datahash, config, 'Rds'), collapse='.')
 
     # write rdump of data to disk
-    make_standata(stan_data, file = stan_data_file, metadata_file = stan_metadata_file)
+    make_standata(data, file = stan_data_file, metadata_file = stan_metadata_file)
 
     # update control if init_f given (even though not yet populated)
     if (!is.null(init_f))
@@ -98,7 +98,7 @@ fit_stan_model <- function(stan_data, stan_model=stan_model, label='default',
 
     # compile stan model
     cmdstan <- './cmdstan'
-    compiled_model <- stringr::str_replace(normalizePath(stan_model), pattern='\\.stan$', repl='')
+    compiled_model <- stringr::str_replace(normalizePath(file), pattern='\\.stan$', repl='')
     rc <- system(glue::glue('cd {cmdstan} && make -j{cores} {compiled_model}'))
     stopifnot(rc == 0)
 
