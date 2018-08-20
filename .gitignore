@@ -1,0 +1,14 @@
+.Rhistory
+Rplots.pdf
+Rlib
+.Rproj.user
+.DS_Store
+*~
+stan/*
+!stan/*.stan
+!stan/*.png
+*.output.csv
+*.summary.csv
+.RData
+*_cache/
+*swp
