@@ -62,14 +62,9 @@ fit_stan_model <- function(stan_data, stan_model=stan_model, label='default',
                            skip_if_exists = TRUE,
                            adapt_delta = 0.99,
                            max_treedepth = 15,
-                           with_predict = TRUE,
-                           survprob_fun = predict_survival,
-                           progprob_fun = predict_recist_pd,
                            control = list(adapt = list(delta = adapt_delta),
                                           list(algorithm = 'hmc', engine = 'nuts', max_depth = max_treedepth),
                                           list(num_samples = samples, num_warmup = warmup, init = init)),
-                           survprob_args = list(time = c(0, seq_len(10))*70),
-                           progprob_args = list(time = c(0, seq_len(10))*10)
                            ) {
     set.seed(seed)
     seeds <- ceiling(runif(chains, 0, 10^6))
@@ -88,18 +83,6 @@ fit_stan_model <- function(stan_data, stan_model=stan_model, label='default',
     stan_summary_file <- paste(c(stan_model, 'summary', label, datahash, config, 'txt'), collapse='.')
     stan_fit_file <-  paste(c(stan_model, 'fit', label, datahash, config, 'Rds'), collapse='.')
     stan_init_file <- paste(c(stan_model, 'chain{i}-init', label, datahash, config, 'Rds'), collapse='.')
-    survprob_file <- NULL
-    progprob_file <- NULL
-    if (with_predict) {
-      if (!is.null(survprob_fun)) {
-        survprob_hash <- digest::digest(survprob_args, algo = 'md5', serialize = T)
-        survprob_file <- paste(c(stan_model, 'survprob', label, datahash, config, survprob_hash, 'Rds'), collapse='.')
-      }
-      if (!is.null(progprob_fun)) {
-        progprob_hash <- digest::digest(progprob_args, algo = 'md5', serialize = T)
-        progprob_file <- paste(c(stan_model, 'progprob', label, datahash, config, progprob_hash, 'Rds'), collapse='.')
-      }
-    }
 
     # write rdump of data to disk
     make_standata(stan_data, file = stan_data_file, metadata_file = stan_metadata_file)
@@ -175,31 +158,10 @@ fit_stan_model <- function(stan_data, stan_model=stan_model, label='default',
         fit <- readRDS(stan_fit_file)
     }
 
-    if (with_predict && !is.null(survprob_fun)) {
-      if (new_file || !skip_if_exists || !file.exists(survprob_file)) {
-        print("Starting predict-survprob")
-        survprob <- purrr::lift_dl(survprob_fun, fit = fit, metadata = attributes(stan_data), stan_data = stan_data)(survprob_args)
-        saveRDS(survprob, survprob_file)
-      } else {
-        survprob <- readRDS(survprob_file)
-      }
-    }
-    if (with_predict && !is.null(progprob_fun)) {
-      if (new_file || !skip_if_exists || !file.exists(progprob_file)) {
-        print("Starting predict-progprob")
-        progprob <- purrr::lift_dl(progprob_fun, fit = fit, metadata = attributes(stan_data), stan_data = stan_data)(progprob_args)
-        saveRDS(progprob, progprob_file)
-      } else {
-        progprob <- readRDS(progprob_file)
-      }
-    }
-    
     rstan:::throw_sampler_warnings(fit)
     attr(fit, 'stan_data_file') <- stan_data_file
     attr(fit, 'stan_fit_file') <- stan_fit_file
     attr(fit, 'stan_metadata_file') <- stan_metadata_file
-    attr(fit, 'survprob_file') <- survprob_file
-    attr(fit, 'progprob_file') <- progprob_file
     return(fit)
 }
 
@@ -609,16 +571,6 @@ find_root_dir <- function(path = getwd(), pattern=c('projects', 'az-tumorsize'))
 
 
 load_model_results <- function(stan_model, label, datahash, fit_params = '0.99-15-1-500-500-12345',
-                               with_predict = TRUE, 
-                               survprob_args = list(time = seq(from = 0, to = 700, by = 50)),
-                               survprob_fun = NULL,
-                               progprob_args = list(time = seq(from = 0, to = 700, by = 50)),
-                               progprob_fun = NULL, force = F,
-                               bs_surv_fun = brier_score,
-                               bs_surv_args = list(),
-                               bs_prog_fun = brier_score_pd,
-                               bs_prog_args = list(),
-                               description = 'JM model',
                                ...) {
   fitfile <- glue::glue('{stan_model}.fit.{label}.{datahash}.{fit_params}.Rds')
   datafile <- glue::glue('{stan_model}.data.{label}.{datahash}.Rds')
@@ -626,136 +578,6 @@ load_model_results <- function(stan_model, label, datahash, fit_params = '0.99-1
   fit <- readRDS(fitfile)
   stan_data <- rstan::read_rdump(datafile)
   metadata <- readRDS(mdfile)
-  if (with_predict) {
-    predict_results <- precalc_survprob(fit = fit, stan_data = stan_data,
-                                        metadata = metadata, stan_model = stan_model,
-                                        label = label, datahash = datahash, fit_params = fit_params,
-                                        survprob_args = survprob_args, survprob_fun = survprob_fun,
-                                        progprob_args = progprob_args, progprob_fun = progprob_fun,
-                                        force = force,bs_surv_fun = bs_surv_fun,
-                                        bs_surv_args = bs_surv_args,
-                                        bs_prog_fun = bs_prog_fun,
-                                        bs_prog_args = bs_prog_args, description = description)
-  } else {
-    predict_results <- list()
-  }
-  return(c(
-    tibble::lst(fit, stan_data, metadata, ...),
-    predict_results))
-}
-
-tags_from_args <- function(..., .args = list()) {
-  if (length(list(...)) > 0) {
-    args <- list(...)
-  } else {
-    args <- list()
-  }
-  if (!missing(.args)) {
-    args <- c(args, .args)
-  }
-  # filter to atomic char / numeric args
-  args <- purrr::keep(args, ~ (is_character(.) || is_numeric(.) || is_logical(.)) && purrr::is_bare_atomic(.))
-  tags <- as.character(purrr::map2(args, names(args), ~ stringr::str_c(.y, .x, sep = ':')))
-}
-
-precalc_survprob <- function(fit, stan_data, metadata, description,
-                             stan_model, label, datahash, fit_params,
-                             survprob_args, survprob_fun, progprob_args, progprob_fun,
-                             force = F,
-                             bs_surv_fun = brier_score, bs_surv_args = list(),
-                             bs_prog_fun = brier_score_pd, bs_prog_args = list()) {
-  if (!is.null(survprob_fun)) {
-    survprob_hash <- digest::digest(survprob_args)
-    survprob_file <- paste(c(stan_model, 'survprob', label, datahash, fit_params, survprob_hash, 'Rds'), collapse='.')
-    survscore_hash <- digest::digest(c(bs_surv_args, list(description = description)))
-    survscore_file <- paste(c(stan_model, 'survscore', label, datahash, fit_params, survprob_hash, survscore_hash, 'Rds'), collapse='.')
-  } else {
-    survprob_file <- NULL
-    survscore_file <- NULL
-  }
-  if (!is.null(progprob_fun)) {
-    progprob_hash <- digest::digest(progprob_args)
-    progprob_file <- paste(c(stan_model, 'progprob', label, datahash, fit_params, progprob_hash, 'Rds'), collapse='.')
-    progscore_hash <- digest::digest(c(bs_prog_args, list(description = description)))
-    progscore_file <- paste(c(stan_model, 'progscore', label, datahash, fit_params, progprob_hash, progscore_hash, 'Rds'), collapse='.')
-  } else {
-    progprob_file <- NULL
-    progscore_file <- NULL
-  }
-  results <- tibble::lst(progprob_file, survprob_file, progscore_file, survscore_file)
-
-  if (!is.null(survprob_fun)) {
-    if (force || !file.exists(survprob_file)) {
-      print("Starting predict-survprob")
-      survprob <- purrr::lift_dl(survprob_fun, fit = fit, metadata = metadata, stan_data = stan_data)(survprob_args)
-      saveRDS(survprob, survprob_file)
-    } else {
-      survprob <- readRDS(survprob_file)
-    }
-    #results <- c(results, tibble::lst(survprob))
-    
-    if (!is.null(bs_surv_fun)) {
-      # prepare brier_score data summary for survival
-      if ('result_var' %in% names(survprob_args)) {
-        surv_result_var <- survprob_args$result_var
-      } else {
-        surv_result_var <- 'survprob'
-      }
-      if (force || !file.exists(survscore_file)) {
-        print("Starting brier_score calcs for survprob")
-        bs <- purrr::lift_dl(bs_surv_fun,
-                           at = survprob_args$time,
-                           fit = fit,
-                           metadata = metadata,
-                           stan_data = stan_data,
-                           pp_prob = survprob,
-                           pp_result_var = surv_result_var)(bs_surv_args) %>%
-        dplyr::mutate(model = description)
-        saveRDS(bs, file = survscore_file)
-      } else {
-        bs <- readRDS(survscore_file)
-      }
-      results$bs <- bs
-    }
-  }
-  
-  if (!is.null(progprob_fun)) {
-    if (force || !file.exists(progprob_file)) {
-      print("Starting predict-progprob")
-      progprob <- purrr::lift_dl(progprob_fun, fit = fit, metadata = metadata, stan_data = stan_data)(progprob_args)
-      saveRDS(progprob, progprob_file)
-    } else {
-      progprob <- readRDS(progprob_file)
-    }
-    #results <- c(results, tibble::lst(progprob))
-    
-    if (!is.null(bs_prog_fun)) {
-      # compute brier_score data summary for progression
-      if ('result_var' %in% names(progprob_args)) {
-        prog_result_var <- progprob_args$result_var
-      } else {
-        prog_result_var <- 'recist_pd'
-      }
-      if (!'invert' %in% names(progprob_args)) {
-        stop2('Progprob results need to be inverted for brier_score!')
-      }
-      if (force || !file.exists(progscore_file)) {
-        print("Starting brier_score calcs for progprob")
-        bs_pd <- purrr::lift_dl(bs_prog_fun,
-                                at = progprob_args$time,
-                                fit = fit,
-                                metadata = metadata,
-                                stan_data = stan_data,
-                                pp_prob = progprob,
-                                pp_result_var = prog_result_var)(bs_prog_args) %>%
-          dplyr::mutate(model = description)
-        saveRDS(bs_pd, file = progscore_file)
-      } else {
-        bs_pd <- readRDS(progscore_file)
-      }
-      results$bs_pd <- bs_pd
-    } # end if (!is.null(bs_prog_fun))
-  } # end if (!is.null(progprob_fun))
-  results
+  tibble::lst(fit, stan_data, metadata, ...)
 }
 
