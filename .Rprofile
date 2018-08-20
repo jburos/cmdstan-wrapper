@@ -3,7 +3,7 @@ local({
   Sys.setenv(TZ="America/New_York")
 	options(repos = c(CRAN = "https://cran.rstudio.org/"))
 
-	find_root_dir <- function(path, pattern='az-tumorsize') {
+	find_root_dir <- function(path, pattern='cmdstan-wrapper') {
 	    if (grepl(pattern, basename(path)) == TRUE) {
 		return(path)
 	    } else {
@@ -41,8 +41,8 @@ local({
 	  .First <- function(){cat('Operating in conda env:', Sys.getenv('CONDA_DEFAULT_ENV'),  "\n")}
 	} else {
 	  ## local library for project-specific packages
-	  dir.create(file.path(ROOT_DIR, 'Rlib2'), showWarnings = FALSE, recursive = TRUE)
-	  .libPaths(new = file.path(ROOT_DIR, 'Rlib2'))
+	  dir.create(file.path(ROOT_DIR, 'Rlib'), showWarnings = FALSE, recursive = TRUE)
+	  .libPaths(new = file.path(ROOT_DIR, 'Rlib'))
 	  .First <- function(){cat('ROOT_DIR set to', ROOT_DIR, "\n")}
 	}
 })
