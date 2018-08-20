@@ -41,16 +41,23 @@ Fitting a stan model proceeds in a few steps (similar to what one would do when 
 2. Call `fit_stan_model()` function, within [stan_helpers.functions.R](stan_helpers.functions.R).
 3. Evaluate the model fit. Personally I have an Rmd template file I use to produce a static MD for each model fit. That process isn't included here.
 
-# A note about this CmdStan wrapper vs using Rstan
+# Comparison to Rstan
 
-The scripts in this repo largely replicate the functionality of Rstan -- I have found, however, several benefits to this approach:
+The scripts in this repo largely replicate the functionality of Rstan -- I have found, however, several benefits to this approach for my workflow.
 
-1. Checkpoint the version of CmdStan 
+#### Pros
+
+1. Can checkpoint the version of CmdStan 
 2. Better job control due to the simplicity of the code
     - killing parent process kills all child processes
     - more stable for long-running chains (not sure why this is)
 3. Maintains an archive of model fits that is stan-interface agnostic. In academia, this is useful.
 4. Built-in caching of model fits. Same fit with same seed will not re-sample.
+
+#### Cons
+
+1. Not as many sampling control options exposed as in Rstan
+2. Reading in sampling output may be slower than fitting in native R
 
 The code to execute via CmdStan is in the [stan_helpers.functions.R](stan_helpers.functions.R) file.
 
